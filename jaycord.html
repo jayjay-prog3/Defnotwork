@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>School Chat</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --panel: rgba(30, 30, 30, 0.85);
+      --accent: #6cf;
+      --bubble-me: #4a90e2;
+      --bubble-other: #333;
+      --font-main: "Poppins", sans-serif;
+      --font-mono: "JetBrains Mono", monospace;
+    }
+    body {
+      margin: 0;
+      font-family: var(--font-main);
+      background: linear-gradient(135deg, #1a1a1a, #111);
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .app {
+      width: 900px;
+      height: 600px;
+      display: flex;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+      backdrop-filter: blur(20px);
+      background: var(--panel);
+    }
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .side {
+      width: 200px;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      color: #fff;
+    }
+    .side h3 { margin-bottom: 20px; }
+    .side button {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-weight: 600;
+      text-align: left;
+      padding: 10px 0;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .side button:hover { color: #fff; }
+    .top {
+      background: rgba(255,255,255,0.1);
+      padding: 14px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .username { font-weight: 600; color: var(--accent); }
+    .messages {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-family: var(--font-main);
+    }
+    .msg {
+      max-width: 70%;
+      padding: 10px 15px;
+      border-radius: 15px;
+      font-size: 14px;
+      line-height: 1.4;
+      word-wrap: break-word;
+      animation: fadeIn 0.2s ease-in;
+    }
+    .me { align-self: flex-end; background: var(--bubble-me); color: #fff; }
+    .other { align-self: flex-start; background: var(--bubble-other); color: #eee; }
+    .name { font-size: 12px; opacity: 0.7; margin-bottom: 3px; font-family: var(--font-mono); }
+    .inputRow {
+      display: flex;
+      padding: 12px;
+      background: rgba(0,0,0,0.5);
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .inputRow input {
+      flex: 1; padding: 12px;
+      border: none; border-radius: 8px;
+      background: rgba(255,255,255,0.1);
+      color: #fff; outline: none;
+      margin-right: 8px;
+      font-family: var(--font-main);
+    }
+    .inputRow button {
+      padding: 12px 20px;
+      border: none; border-radius: 8px;
+      background: var(--accent); color: #000;
+      font-weight: bold; cursor: pointer;
+      transition: 0.2s;
+      font-family: var(--font-main);
+    }
+    .inputRow button:hover { transform: scale(1.05); }
+    #overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.9);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #overlay form {
+      background: rgba(30,30,30,0.9);
+      padding: 30px; border-radius: 15px;
+      text-align: center; color: #fff;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.7);
+    }
+    #overlay input {
+      padding: 12px; margin-top: 12px;
+      border-radius: 8px; border: none;
+      width: 220px; background: #111; color: #fff;
+    }
+    #overlay button {
+      padding: 12px 24px; margin-top: 15px;
+      border: none; border-radius: 8px;
+      background: var(--accent); color: #000;
+      font-weight: bold; cursor: pointer;
+    }
+    /* Settings panel */
+    #settingsPanel {
+      position: fixed;
+      right: -300px;
+      top: 0;
+      width: 300px;
+      height: 100%;
+      background: rgba(20,20,20,0.95);
+      color: #fff;
+      padding: 20px;
+      transition: right 0.3s ease;
+      box-shadow: -4px 0 20px rgba(0,0,0,0.7);
+      font-family: var(--font-main);
+    }
+    #settingsPanel.open { right: 0; }
+    #settingsPanel h2 { margin-top: 0; }
+    #settingsPanel label { display: block; margin: 12px 0 4px; font-size: 14px; }
+    #settingsPanel input, #settingsPanel select {
+      width: 100%; padding: 8px; border-radius: 6px; border: none;
+      background: #222; color: #fff; margin-bottom: 10px;
+    }
+    #settingsPanel button {
+      margin-top: 10px; width: 100%;
+      padding: 10px; border: none; border-radius: 6px;
+      background: var(--accent); color: #000; font-weight: bold;
+      cursor: pointer;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px);} to { opacity: 1; transform: translateY(0);} }
+  </style>
+</head>
+<body>
+  <div id="overlay">
+    <form id="usernameForm">
+      <h2>👋 Enter your username</h2>
+      <input type="text" id="usernameInput" placeholder="username" required>
+      <br>
+      <button type="submit">Join Chat</button>
+    </form>
+  </div>
+
+  <div class="app" style="display:none;" id="chatApp">
+    <div class="main">
+      <div class="top">
+        <div class="avatar"></div>
+        <div>
+          <div class="username" id="displayName"></div>
+          <div style="font-size:12px; color:#aaa;">Connected</div>
+        </div>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="inputRow">
+        <input id="input" autocomplete="off" placeholder="Type a message..."/>
+        <button id="send">Send</button>
+      </div>
+    </div>
+    <div class="side">
+      <h3>⚙️ Menu</h3>
+      <button id="settingsBtn">Settings</button>
+    </div>
+  </div>
+
+  <div id="settingsPanel">
+    <h2>⚙️ Settings</h2>
+    <label for="newUsername">Change Username</label>
+    <input type="text" id="newUsername" placeholder="new username">
+    <button id="saveUsername">Save Username</button>
+
+    <label for="themeSelect">Theme</label>
+    <select id="themeSelect">
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+      <option value="neon">Neon</option>
+    </select>
+
+    <label for="fontSelect">Font</label>
+    <select id="fontSelect">
+      <option value="Poppins, sans-serif">Poppins</option>
+      <option value="JetBrains Mono, monospace">JetBrains Mono</option>
+      <option value="Arial, sans-serif">Arial</option>
+    </select>
+  </div>
+
+  <script>
+    const SERVER_URL = "https://serverhosting-4sfq.onrender.com";
+
+    const overlay = document.getElementById("overlay");
+    const usernameForm = document.getElementById("usernameForm");
+    const usernameInput = document.getElementById("usernameInput");
+    const chatApp = document.getElementById("chatApp");
+    const displayName = document.getElementById("displayName");
+    const input = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const messages = document.getElementById("messages");
+    const settingsBtn = document.getElementById("settingsBtn");
+    const settingsPanel = document.getElementById("settingsPanel");
+    const saveUsernameBtn = document.getElementById("saveUsername");
+    const newUsernameInput = document.getElementById("newUsername");
+    const themeSelect = document.getElementById("themeSelect");
+    const fontSelect = document.getElementById("fontSelect");
+
+    let username = localStorage.getItem("chat_username");
+
+    if (username) {
+      startChat(username);
+    }
+
+    usernameForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = usernameInput.value.trim();
+      if (name) {
+        localStorage.setItem("chat_username", name);
+        startChat(name);
+      }
+    });
+
+    function startChat(name) {
+      username = name;
+      displayName.textContent = username;
+      overlay.style.display = "none";
+      chatApp.style.display = "flex";
+
+      const socket = io(SERVER_URL);
+
+      sendBtn.addEventListener("click", sendMessage);
+      input.addEventListener("keypress", e => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      function sendMessage() {
+        const msg = input.value.trim();
+        if (msg) {
+          socket.emit("chat message", { user: username, text: msg });
+          input.value = "";
+        }
+      }
+
+      socket.on("chat message", (data) => {
+        const div = document.createElement("div");
+        div.classList.add("msg");
+        div.classList.add(data.user === username ? "me" : "other");
+        if (data.user !== username) {
+          div.innerHTML = `<div class="name">${data.user}</div>${data.text}`;
+        } else {
+          div.textContent = data.text;
+        }
+        messages.appendChild(div);
+        messages.scrollTop = messages.scrollHeight;
+      });
+    }
+
+    // Settings panel toggle
+    settingsBtn.addEventListener("click", () => {
+      settingsPanel.classList.toggle("open");
+    });
+
+    // Save username
+    saveUsernameBtn.addEventListener("click", () => {
+      const newName = newUsernameInput.value.trim();
+      if (newName) {
+        localStorage.setItem("chat_username", newName);
+        location.reload(); // reload so new name applies clean
+      }
+    });
+
+    // Theme switch
+    themeSelect.addEventListener("change", () => {
+      const theme = themeSelect.value;
+      if (theme === "light") {
+        document.body.style.background = "#f5f5f5";
+        document.body.style.color = "#000";
+      } else if (theme === "neon") {
+        document.body.style.background = "linear-gradient(135deg,#ff0080,#7928ca)";
+      } else {
+        document.body.style.background = "linear-gradient(135deg,#1a1a1a,#111)";
+      }
+    });
+
+    // Font switch
+    fontSelect.addEventListener("change", () => {
+      document.body.style.fontFamily = fontSelect.value;
+    });
+  </script>
+</body>
+</html>
